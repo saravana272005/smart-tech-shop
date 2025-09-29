@@ -1,6 +1,5 @@
 /* server.js - DUAL MODE (MySQL for Local, PostgreSQL for Render) */
 import express from "express";
-import mysql from "mysql2"; // 🚩 KEPT FOR LOCAL: MySQL Driver
 import pg from "pg";       // 🚩 ADDED FOR RENDER: PostgreSQL Driver
 const { Client } = pg;    // 🚩 ADDED FOR RENDER
 import cors from "cors";
