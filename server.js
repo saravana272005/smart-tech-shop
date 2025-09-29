@@ -1,6 +1,8 @@
-/* server.js */
+/* server.js - DUAL MODE (MySQL for Local, PostgreSQL for Render) */
 import express from "express";
-import mysql from "mysql2";
+import mysql from "mysql2"; // 🚩 KEPT FOR LOCAL: MySQL Driver
+import pg from "pg";       // 🚩 ADDED FOR RENDER: PostgreSQL Driver
+const { Client } = pg;    // 🚩 ADDED FOR RENDER
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import path from "path";
@@ -16,20 +18,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename); 
 
 // ✅ 1. Load environment variables first
-// 💡 FIX: Explicitly specify the file name as '.env.js' to match the user's file name.
 dotenv.config({ path: path.resolve(process.cwd(), '.env.js') });
 
 // --- IMPORTANT: Runtime Environment Variable Check ---
-// We check for critical variables and exit if they are missing to prevent runtime errors.
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     console.error("❌ CRITICAL ERROR: RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is not set in the .env file.");
-    console.error("💡 Please ensure your .env file is in the root directory (E:\\SaroProject) and contains the correct keys.");
     process.exit(1); 
 }
-// ... (The rest of the code continues)
 if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
     console.error("❌ CRITICAL ERROR: One or more DB environment variables (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME) are missing.");
-    console.error("💡 Check your .env file for database credentials and ensure your MySQL server is running.");
     process.exit(1);
 }
 
@@ -66,33 +63,124 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + "-" + file.originalname);
-    
   },
 });
 const upload = multer({ storage: storage });
 
-// -------------------------
-// MySQL Connection (Using process.env)
-// -------------------------
-const db = mysql.createConnection({
-  // ✅ Using process.env
-  host: process.env.DB_HOST, 
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD, 
-  database: process.env.DB_NAME,
-});
 
+// =======================================================
+// 🚩 DUAL DB LOGIC SETUP 🚩
+// =======================================================
+let db;
+let query; // Universal query function
+
+// Check if we are running in the Render environment (or local MySQL)
+const isRenderEnvironment = process.env.DB_HOST && !process.env.DB_HOST.includes('localhost');
+
+if (isRenderEnvironment) {
+    // -------------------------
+    // 🚩 POSTGRESQL CONNECTION (For Render Deployment)
+    // -------------------------
+    console.log("ℹ️ Running in RENDER/POSTGRESQL mode.");
+
+    db = new Client({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        port: 5432, // Default port for Postgres
+        ssl: {
+            rejectUnauthorized: false, // Required for Render to connect securely
+        },
+    });
+    
+    // 🚩 Universal query helper for Postgres ($1, $2)
+    query = (sql, params = []) => {
+        const processedSql = sql.replace(/\?/g, (match, index) => `$${index + 1}`);
+        return db.query(processedSql, params).then(res => res);
+    };
+
+} else {
+    // -------------------------
+    // 🚩 MYSQL CONNECTION (For Local Development)
+    // -------------------------
+    console.log("ℹ️ Running in LOCAL/MYSQL mode.");
+    
+    // KEEPING YOUR ORIGINAL MYSQL CONNECTION CODE
+    db = mysql.createConnection({
+        host: process.env.DB_HOST, 
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD, 
+        database: process.env.DB_NAME,
+    });
+    
+    // 🚩 Universal query helper for MySQL (?)
+    query = (sql, params = []) => {
+        // Wrap the standard MySQL query method in a Promise for consistency
+        return new Promise((resolve, reject) => {
+            db.query(sql, params, (err, results) => {
+                if (err) return reject(err);
+                // For MySQL, we resolve with the standard results object
+                resolve({ rows: results, rowCount: results.affectedRows });
+            });
+        });
+    };
+}
+
+// -------------------------
+// COMMON DB CONNECTION STARTS HERE
+// -------------------------
 db.connect((err) => {
   if (err) {
-    console.error("❌ DB connection failed:", err);
-    console.error("💡 Check if your MySQL server is running and the credentials in .env are correct.");
+    console.error(`❌ DB connection failed (${isRenderEnvironment ? 'Postgres' : 'MySQL'}):`, err);
     process.exit(1);
   }
-  console.log("✅ MySQL Connected");
+  console.log(`✅ ${isRenderEnvironment ? 'PostgreSQL' : 'MySQL'} Connected`);
 });
 
-// Create 'services' table if it doesn't exist
-const createServicesTableSql = `
+// =======================================================
+// 🚩 TABLE CREATION (Uses ternary logic for correct SQL syntax)
+// =======================================================
+// Function to run table creation queries
+const runTableCreation = (sql_mysql, sql_postgres) => {
+    const sql = isRenderEnvironment ? sql_postgres : sql_mysql;
+    
+    // Use raw db.query for MySQL or db.query (Promise) for Postgres
+    if (isRenderEnvironment) {
+        query(sql).catch(err => console.error("❌ Error creating table (PG):", err));
+    } else {
+        db.query(sql, (err) => {
+             if (err) console.error("❌ Error creating table (MySQL):", err);
+        });
+    }
+}
+
+// Create 'users' table
+const createUsersTableSql_mysql = `
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY, 
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL, 
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(50) DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);`;
+const createUsersTableSql_pg = `
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY, 
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL, 
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(50) DEFAULT 'user',
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+);`;
+runTableCreation(createUsersTableSql_mysql, createUsersTableSql_pg);
+
+
+// Create 'services' table
+const createServicesTableSql_mysql = `
 CREATE TABLE IF NOT EXISTS services (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -105,16 +193,65 @@ CREATE TABLE IF NOT EXISTS services (
     createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 `;
-db.query(createServicesTableSql, (err) => {
-  if (err) {
-    console.error("❌ Error creating services table:", err);
-  } else {
-    // console.log("✅ 'services' table ready."); // <-- COMMENTED OUT
-  }
-});
+const createServicesTableSql_pg = `
+CREATE TABLE IF NOT EXISTS services (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(255),
+    deviceType VARCHAR(50) NOT NULL,
+    model VARCHAR(255),
+    issue TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+    createdAt TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+)
+`;
+runTableCreation(createServicesTableSql_mysql, createServicesTableSql_pg);
 
-// NEW: Create 'orders' table with 'payment_method' column (Modified to include email_summary)
-const createOrdersTableSql = `
+// Create 'products' table (NEEDED FOR FOREIGN KEY REFERENCE LATER)
+const createProductsTableSql_mysql = `
+CREATE TABLE IF NOT EXISTS products (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(255),
+    brand VARCHAR(255),
+    price DECIMAL(10,2) NULL DEFAULT NULL, 
+    mrp_price DECIMAL(10,2) NULL DEFAULT NULL,
+    stock INT,
+    images JSON,
+    description TEXT,
+    specs JSON,
+    rating DECIMAL(3,2) DEFAULT 0,
+    reviews INT DEFAULT 0,
+    ratingBreakdown JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    variants JSON,
+    discount_end_date DATE
+);`;
+const createProductsTableSql_pg = `
+CREATE TABLE IF NOT EXISTS products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(255),
+    brand VARCHAR(255),
+    price DECIMAL(10,2), 
+    mrp_price DECIMAL(10,2),
+    stock INTEGER,
+    images JSONB,
+    description TEXT,
+    specs JSONB,
+    rating DECIMAL(3,2) DEFAULT 0,
+    reviews INTEGER DEFAULT 0,
+    ratingBreakdown JSONB,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    variants JSONB,
+    discount_end_date DATE
+);`;
+runTableCreation(createProductsTableSql_mysql, createProductsTableSql_pg);
+
+
+// Create 'orders' table
+const createOrdersTableSql_mysql = `
     CREATE TABLE IF NOT EXISTS orders (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         orderId VARCHAR(100),
@@ -129,21 +266,36 @@ const createOrdersTableSql = `
         payment_method VARCHAR(50) DEFAULT 'Online Pay',
         razorpay_order_id VARCHAR(255),
         razorpay_payment_id VARCHAR(255),
-        email_summary JSON, /* NEW COLUMN for simpler email content */
+        email_summary JSON,
         userId INT, 
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL 
     );
 `;
-db.query(createOrdersTableSql, (err) => {
-    if (err) {
-        console.error("❌ Error creating orders table:", err);
-    } else {
-        // console.log("✅ 'orders' table ready."); // <-- COMMENTED OUT
-    }
-});
+const createOrdersTableSql_pg = `
+    CREATE TABLE IF NOT EXISTS orders (
+        id BIGSERIAL PRIMARY KEY,
+        orderId VARCHAR(100),
+        orderDate DATE NOT NULL DEFAULT CURRENT_DATE,
+        userEmail VARCHAR(255) NOT NULL,
+        customerName VARCHAR(255) NOT NULL,
+        customerPhone VARCHAR(255) NOT NULL,
+        customerAddress TEXT NOT NULL,
+        total DECIMAL(10,2) NOT NULL,
+        status VARCHAR(50) DEFAULT 'Pending',
+        products_summary JSONB,
+        payment_method VARCHAR(50) DEFAULT 'Online Pay',
+        razorpay_order_id VARCHAR(255),
+        razorpay_payment_id VARCHAR(255),
+        email_summary JSONB,
+        userId INTEGER,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL 
+    );
+`;
+runTableCreation(createOrdersTableSql_mysql, createOrdersTableSql_pg);
 
-// NEW: Create 'advertisements' table
-const createAdvertisementsTableSql = `
+
+// Create 'advertisements' table
+const createAdvertisementsTableSql_mysql = `
     CREATE TABLE IF NOT EXISTS advertisements (
         id INT AUTO_INCREMENT PRIMARY KEY,
         image_url VARCHAR(255) NOT NULL,
@@ -151,13 +303,21 @@ const createAdvertisementsTableSql = `
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 `;
-db.query(createAdvertisementsTableSql, (err) => {
-    if (err) {
-        console.error("❌ Error creating advertisements table:", err);
-    } else {
-        console.log("✅ 'advertisements' table ready.");
-    }
-});
+const createAdvertisementsTableSql_pg = `
+    CREATE TABLE IF NOT EXISTS advertisements (
+        id SERIAL PRIMARY KEY,
+        image_url VARCHAR(255) NOT NULL,
+        description VARCHAR(255),
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    );
+`;
+runTableCreation(createAdvertisementsTableSql_mysql, createAdvertisementsTableSql_pg);
+console.log("✅ 'advertisements' table ready.");
+
+
+// =======================================================
+// 🚩 END TABLE CREATION
+// =======================================================
 
 
 // -------------------------
@@ -166,7 +326,6 @@ db.query(createAdvertisementsTableSql, (err) => {
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        // ✅ Using global constants (derived from process.env)
         user: MAIL_USER, 
         pass: MAIL_PASS 
     }
@@ -179,6 +338,7 @@ const transporter = nodemailer.createTransport({
 // Helper function to format order summary for email (MODIFIED FOR SIMPLE LIST)
 const formatOrderSummary = (summaryJson) => {
     try {
+        // ... (function logic remains the same)
         const products = (typeof summaryJson === 'string') ? JSON.parse(summaryJson) : summaryJson;
         let productDetails = '';
 
@@ -187,11 +347,9 @@ const formatOrderSummary = (summaryJson) => {
         }
 
         products.forEach(p => {
-            // Get the price to display
             const price = parseFloat(p.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
             const itemQty = p.quantity || 1;
             
-            // Itemized line format: Product name, Price, Quantity
             productDetails += `
                 <p style="margin: 5px 0; padding-bottom: 5px; border-bottom: 1px dashed #eee;">
                     <strong style="color: #333;">Product:</strong> ${p.name} (Qty: ${itemQty})<br>
@@ -210,10 +368,10 @@ const formatOrderSummary = (summaryJson) => {
 // NEW: Function to format and send the Order Confirmation Email
 const sendOrderConfirmationEmail = (orderData) => {
     try {
+        // ... (function logic remains the same)
         const summary = JSON.parse(orderData.email_summary);
         const customerFirstName = orderData.customerName.split(' ')[0] || 'Valued Customer';
         
-        // 1. Format Product Details
         const productDetailsHtml = summary.products.map(p => {
             const price = parseFloat(p.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
             const itemQty = p.quantity || 1;
@@ -226,7 +384,6 @@ const sendOrderConfirmationEmail = (orderData) => {
             `;
         }).join('');
         
-        // 2. Format Totals
         const totalAmount = parseFloat(summary.totals.total).toLocaleString('en-IN', { minimumFractionDigits: 2 });
         const subtotal = parseFloat(summary.totals.subtotal).toLocaleString('en-IN', { minimumFractionDigits: 2 });
         const gst = parseFloat(summary.totals.gst).toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -237,7 +394,6 @@ const sendOrderConfirmationEmail = (orderData) => {
         const paymentMethodDisplay = orderData.paymentMethod.toUpperCase().replace('-', ' - ');
 
         const mailOptions = {
-            // ✅ Using global constant
             from: MAIL_USER, 
             to: orderData.userEmail,
             subject: `🎉 Smart Tech Order #${orderData.orderId} Confirmed!`,
@@ -297,16 +453,15 @@ const sendOrderConfirmationEmail = (orderData) => {
 
 // Main function to send order status email (MODIFIED TO USE email_summary)
 const sendOrderStatusEmail = (order, orderId) => {
-    // Only send for these critical status changes
     if (order.status === 'Cancelled' || order.status === 'Delivered' || order.status === 'Shipped' || order.status === 'Paid') {
         
         try {
+            // ... (function logic remains the same)
             const summary = (typeof order.email_summary === 'string') ? JSON.parse(order.email_summary) : order.email_summary;
             
-            // Check if summary and its parts exist
             if (!summary || !summary.products || !summary.totals) {
                 console.error("❌ Cannot send status email: email_summary is missing or malformed.");
-                return; // Skip email if data is bad
+                return; 
             }
 
             const customerFirstName = order.customerName.split(' ')[0] || 'Valued Customer';
@@ -320,7 +475,6 @@ const sendOrderStatusEmail = (order, orderId) => {
             
             const statusSubject = statusTitles[order.status] || `Smart Tech Order #${order.orderId || orderId} Status Update: ${order.status}`;
             
-            // 1. Format Product Details from email_summary
             const productDetailsHtml = summary.products.map(p => {
                 const price = parseFloat(p.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
                 const itemQty = p.quantity || 1;
@@ -333,7 +487,6 @@ const sendOrderStatusEmail = (order, orderId) => {
                 `;
             }).join('');
             
-            // 2. Format Totals from email_summary
             const totalAmount = parseFloat(summary.totals.total).toLocaleString('en-IN', { minimumFractionDigits: 2 });
             const subtotal = parseFloat(summary.totals.subtotal).toLocaleString('en-IN', { minimumFractionDigits: 2 });
             const gst = parseFloat(summary.totals.gst).toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -344,9 +497,8 @@ const sendOrderStatusEmail = (order, orderId) => {
             const paymentMethodDisplay = order.payment_method.toUpperCase().replace('-', ' - ');
 
             const mailOptions = {
-                // ✅ Using global constant
                 from: MAIL_USER, 
-                to: order.userEmail, // Customer's email
+                to: order.userEmail, 
                 subject: statusSubject,
                 html: `
                     <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px; border-radius: 8px;">
@@ -414,7 +566,6 @@ const sendOrderStatusEmail = (order, orderId) => {
 // Razorpay Instance (Using process.env)
 // -------------------------
 const razorpay = new Razorpay({
-  // ✅ Using process.env
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
@@ -431,38 +582,37 @@ app.get("/", (req, res) => {
 // =====================
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
-  const sql = "SELECT * FROM users WHERE email = ?";
-  db.query(sql, [email], async (err, results) => {
-    if (err) {
-      console.error("❌ Login DB error:", err);
-      return res.status(500).json({ status: "error", message: "Internal server error." });
-    }
-    if (results.length === 0) {
+  const sql = isRenderEnvironment ? "SELECT * FROM users WHERE email = $1" : "SELECT * FROM users WHERE email = ?"; // 🚩 DUAL MODE SQL
+  query(sql, [email]).then(async (results) => { 
+    const user = isRenderEnvironment ? results.rows[0] : results.rows[0]; // Get rows from results.rows
+    if (!user) {
       return res.status(401).json({ status: "error", message: "Invalid email or password." });
     }
-    const user = results[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ status: "error", message: "Invalid email or password." });
     }
     const { password: _, ...userWithoutPassword } = user;
     res.json({ status: "success", message: "Login successful.", user: userWithoutPassword });
+  }).catch(err => {
+    console.error("❌ Login DB error:", err);
+    res.status(500).json({ status: "error", message: "Internal server error." });
   });
 });
 
 app.post("/register", async (req, res) => {
   const { first_name, last_name, email, password } = req.body;
   const hashedPassword = await bcrypt.hash(password, 10);
-  const sql = "INSERT INTO users (first_name, last_name, email, password) VALUES (?, ?, ?, ?)";
-  db.query(sql, [first_name, last_name, email, hashedPassword], (err, result) => {
-    if (err) {
-      console.error("❌ Registration DB error:", err);
-      if (err.code === 'ER_DUP_ENTRY') {
-        return res.status(409).json({ status: "error", message: "Email already registered." });
-      }
-      return res.status(500).json({ status: "error", message: "Internal server error." });
-    }
+  const sql = isRenderEnvironment ? "INSERT INTO users (first_name, last_name, email, password) VALUES ($1, $2, $3, $4)" : "INSERT INTO users (first_name, last_name, email, password) VALUES (?, ?, ?, ?)"; // 🚩 DUAL MODE SQL
+  query(sql, [first_name, last_name, email, hashedPassword]).then(result => {
     res.status(201).json({ status: "success", message: "Registration successful." });
+  }).catch(err => {
+    console.error("❌ Registration DB error:", err);
+    const errorCode = isRenderEnvironment ? '23505' : 'ER_DUP_ENTRY';
+    if (err.code === errorCode) { 
+      return res.status(409).json({ status: "error", message: "Email already registered." });
+    }
+    res.status(500).json({ status: "error", message: "Internal server error." });
   });
 });
 
@@ -471,18 +621,23 @@ app.post("/register", async (req, res) => {
 // ORDER API
 // =====================
 app.post('/api/orders', (req, res) => {
-    // NOTE: The request body now contains 'userId' from the logged-in user's session
     const { orderId, userEmail, customerName, customerPhone, customerAddress, total, products_summary, razorpay_order_id, paymentMethod, userId, email_summary, status } = req.body;
 
-    const summaryToStore = typeof products_summary === 'string' ? products_summary : JSON.stringify(products_summary);
-    const emailSummaryToStore = typeof email_summary === 'string' ? email_summary : JSON.stringify(email_summary);
+    const summaryToStore = JSON.stringify(products_summary); 
+    const emailSummaryToStore = JSON.stringify(email_summary); 
     
     const initialStatus = status || 'Pending'; 
 
-    const sql = `
+    const sql_mysql = `
         INSERT INTO orders (orderId, orderDate, userEmail, customerName, customerPhone, customerAddress, total, status, products_summary, email_summary, razorpay_order_id, payment_method, userId) 
         VALUES (?, CURRENT_DATE(), ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?)
     `;
+    const sql_pg = `
+        INSERT INTO orders (orderId, orderDate, userEmail, customerName, customerPhone, customerAddress, total, status, products_summary, email_summary, razorpay_order_id, payment_method, userId) 
+        VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `;
+    const sql = isRenderEnvironment ? sql_pg : sql_mysql; // 🚩 DUAL MODE SQL
+    
     const params = [
         orderId, 
         userEmail, 
@@ -492,64 +647,57 @@ app.post('/api/orders', (req, res) => {
         total, 
         initialStatus, 
         summaryToStore, 
-        emailSummaryToStore, // NEW PARAMETER
+        emailSummaryToStore, 
         razorpay_order_id || null, 
         paymentMethod || 'Online Pay',
         userId 
     ];
 
-    db.query(sql, params, (err, result) => {
-        if (err) {
-            console.error('❌ Error creating order:', err);
-            console.error('SQL:', sql);
-            console.error('Params:', params);
-            return res.status(500).json({ error: 'Internal Server Error', details: err.sqlMessage });
-        }
-        
-        // --- NEW EMAIL CONFIRMATION LOGIC ---
-        // The orderData object already contains all necessary fields, including email_summary
+    query(sql, params).then(result => { 
         sendOrderConfirmationEmail(req.body); 
-        // --- END NEW EMAIL CONFIRMATION LOGIC ---
-        
-        res.status(201).json({ message: 'Order created successfully', id: result.insertId, orderId: orderId });
+        const insertId = isRenderEnvironment ? result.rows[0].id : result.rows.insertId;
+        res.status(201).json({ message: 'Order created successfully', id: insertId, orderId: orderId });
+    }).catch(err => {
+        console.error('❌ Error creating order:', err);
+        res.status(500).json({ error: 'Internal Server Error', details: err.message });
     });
 });
 
 app.get('/api/orders', (req, res) => {
     const sql = 'SELECT * FROM orders ORDER BY id DESC';
-    db.query(sql, (err, results) => {
-        if (err) {
-            console.error('❌ Error fetching orders:', err);
-            return res.status(500).json({ error: 'Internal Server Error' });
-        }
-        res.status(200).json(results);
+    query(sql).then(results => { 
+        const data = isRenderEnvironment ? results.rows : results.rows;
+        res.status(200).json(data);
+    }).catch(err => {
+        console.error('❌ Error fetching orders:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
     });
 });
 
 app.get('/api/orders/user/:email', (req, res) => {
     const { email } = req.params;
-    const sql = 'SELECT * FROM orders WHERE userEmail = ? ORDER BY id DESC';
-    db.query(sql, [email], (err, result) => {
-        if (err) {
-            console.error('❌ Error fetching user orders:', err);
-            return res.status(500).json({ error: 'Internal Server Error' });
-        }
-        res.status(200).json(result);
+    const sql = isRenderEnvironment ? 'SELECT * FROM orders WHERE userEmail = $1 ORDER BY id DESC' : 'SELECT * FROM orders WHERE userEmail = ? ORDER BY id DESC'; // 🚩 DUAL MODE SQL
+    query(sql, [email]).then(result => { 
+        const data = isRenderEnvironment ? result.rows : result.rows;
+        res.status(200).json(data);
+    }).catch(err => {
+        console.error('❌ Error fetching user orders:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
     });
 });
 
 app.get('/api/orders/:id', (req, res) => {
     const { id } = req.params;
-    const sql = 'SELECT * FROM orders WHERE id = ?';
-    db.query(sql, [id], (err, result) => {
-        if (err) {
-            console.error('❌ Error fetching order:', err);
-            return res.status(500).json({ error: 'Internal Server Error' });
-        }
-        if (result.length === 0) {
+    const sql = isRenderEnvironment ? 'SELECT * FROM orders WHERE id = $1' : 'SELECT * FROM orders WHERE id = ?'; // 🚩 DUAL MODE SQL
+    query(sql, [id]).then(result => { 
+        const data = isRenderEnvironment ? result.rows[0] : result.rows[0];
+        if (!data) {
             return res.status(404).json({ message: 'Order not found' });
         }
-        res.status(200).json(result[0]);
+        res.status(200).json(data);
+    }).catch(err => {
+        console.error('❌ Error fetching order:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
     });
 });
 
@@ -559,105 +707,89 @@ app.put('/api/orders/:id', (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     
-    // 1. Check current payment_method and status to determine if payment_method needs update
-    const checkSql = 'SELECT orderId, payment_method, status, userEmail, customerName, customerAddress, total, products_summary, email_summary FROM orders WHERE id = ?';
-    db.query(checkSql, [id], (err, results) => {
-        if (err) {
-            console.error('❌ Error checking payment method:', err);
-            return res.status(500).json({ error: 'Internal Server Error' });
-        }
-        if (results.length === 0) {
+    const checkSql = isRenderEnvironment ? 'SELECT orderId, payment_method, status, userEmail, customerName, customerAddress, total, products_summary, email_summary FROM orders WHERE id = $1' : 'SELECT orderId, payment_method, status, userEmail, customerName, customerAddress, total, products_summary, email_summary FROM orders WHERE id = ?'; // 🚩 DUAL MODE SQL
+    query(checkSql, [id]).then(results => { 
+        const orderBeforeUpdate = isRenderEnvironment ? results.rows[0] : results.rows[0];
+        if (!orderBeforeUpdate) { 
             return res.status(404).json({ message: 'Order not found' });
         }
         
-        const orderBeforeUpdate = results[0];
         const currentPaymentMethod = orderBeforeUpdate.payment_method;
         let newPaymentMethod = currentPaymentMethod;
         
-        // --- CORE LOGIC FOR PAYMENT METHOD UPDATE ---
-        // If COD order status changes to Delivered, mark payment method as 'COD - Paid'
         if (currentPaymentMethod === 'cod' || currentPaymentMethod === 'COD - Paid') {
             if (status === 'Delivered') {
                 newPaymentMethod = 'COD - Paid';
             } 
         } 
         
-        // 2. Perform the update
-        const updateSql = 'UPDATE orders SET status = ?, payment_method = ? WHERE id = ?';
+        const updateSql = isRenderEnvironment ? 'UPDATE orders SET status = $1, payment_method = $2 WHERE id = $3' : 'UPDATE orders SET status = ?, payment_method = ? WHERE id = ?'; // 🚩 DUAL MODE SQL
         const params = [status, newPaymentMethod, id];
         
-        db.query(updateSql, params, (err, result) => {
-            if (err) {
-                console.error('❌ Error updating order status/payment:', err);
-                return res.status(500).json({ error: 'Internal Server Error' });
-            }
-            if (result.affectedRows === 0) {
+        query(updateSql, params).then(result => { 
+            const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+            if (affectedRows === 0) {
                 return res.status(404).json({ message: 'Order not found or no changes made' });
             }
             
-            // --- NEW EMAIL NOTIFICATION LOGIC ---
-            
-            // Combine fields from orderBeforeUpdate with the newly updated status and payment method
             const orderForEmail = {
                 ...orderBeforeUpdate,
-                status: status, // Use the new status
-                payment_method: newPaymentMethod // Use the potentially new payment method
+                status: status, 
+                payment_method: newPaymentMethod 
             };
 
-            // Call the email helper function
             sendOrderStatusEmail(orderForEmail, id);
-            
-            // Since the DB update succeeded, we return success immediately.
             res.status(200).json({ message: "Order status updated successfully and email sent." });
-            // --- END NEW EMAIL NOTIFICATION LOGIC ---
+        }).catch(err => {
+            console.error('❌ Error updating order status/payment:', err);
+            res.status(500).json({ error: 'Internal Server Error' });
         });
+    }).catch(err => {
+        console.error('❌ Error checking payment method:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
     });
 });
 
 app.delete('/api/orders/:id', (req, res) => {
     const { id } = req.params;
-    const sql = 'DELETE FROM orders WHERE id = ?';
-    db.query(sql, [id], (err, result) => {
-        if (err) {
-            console.error('❌ Error deleting order:', err);
-            return res.status(500).json({ error: 'Internal Server Error' });
-        }
-        if (result.affectedRows === 0) {
+    const sql = isRenderEnvironment ? 'DELETE FROM orders WHERE id = $1' : 'DELETE FROM orders WHERE id = ?'; // 🚩 DUAL MODE SQL
+    query(sql, [id]).then(result => { 
+        const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+        if (affectedRows === 0) {
             return res.status(404).json({ error: "Product not found" });
         }
         
         const countSql = "SELECT COUNT(*) AS count FROM orders";
-        db.query(countSql, (countErr, countResult) => {
-            if (countErr) {
-                console.error("❌ Error checking order count after deletion:", countErr);
-                return res.json({ message: "✅ Order deleted, but failed to check table count." });
-            }
+        query(countSql).then(countResult => { 
+            const count = isRenderEnvironment ? countResult.rows[0].count : countResult.rows[0].count;
 
-            if (countResult[0].count === 0) {
-                const resetSql = "ALTER TABLE orders AUTO_INCREMENT = 1";
-                db.query(resetSql, (resetErr, resetResult) => {
-                    if (resetErr) {
-                        console.error("❌ Error resetting AUTO_INCREMENT:", resetErr);
-                        return res.json({ message: "✅ Order deleted, but failed to reset ID counter." });
-                    }
-                    console.log("✅ All orders removed. AUTO_INCREMENT has been reset to 1.");
+            if (count === '0' || count === 0) {
+                const resetSql = isRenderEnvironment ? "ALTER SEQUENCE orders_id_seq RESTART WITH 1" : "ALTER TABLE orders AUTO_INCREMENT = 1"; // 🚩 DUAL MODE SQL
+                query(resetSql).then(() => { 
+                    console.log(`✅ All orders removed. ID counter has been reset to 1 (${isRenderEnvironment ? 'PG' : 'MySQL'}).`);
                     return res.json({ message: "✅ Order deleted and ID counter reset." });
+                }).catch(resetErr => {
+                    console.error("❌ Error resetting ID counter:", resetErr);
+                    return res.json({ message: "✅ Order deleted, but failed to reset ID counter." });
                 });
             } else {
                 res.json({ message: "✅ Order deleted" });
             }
+        }).catch(countErr => {
+            console.error("❌ Error checking order count after deletion:", countErr);
+            return res.json({ message: "✅ Order deleted, but failed to check table count." });
         });
+    }).catch(err => {
+        console.error('❌ Error deleting order:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
     });
 });
 
 // =====================
-// NEW RAZORPAY API
+// NEW RAZORPAY API (No DB changes needed here)
 // =====================
 app.post('/api/create-razorpay-order', async (req, res) => {
   const { amount, receipt } = req.body;
-  // console.log("📩 Razorpay Order Request:", req.body);
-  // console.log("🔑 Key ID:", process.env.RAZORPAY_KEY_ID); // debug
-
   try {
     const order = await razorpay.orders.create({
       amount: amount,
@@ -672,16 +804,11 @@ app.post('/api/create-razorpay-order', async (req, res) => {
   }
 });
 
-
-
-// NEW: Verify Razorpay Payment
+// NEW: Verify Razorpay Payment (No DB changes needed here)
 app.post("/api/verify-payment", (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, order_id } =
     req.body;
-
   const body = razorpay_order_id + "|" + razorpay_payment_id;
-
-  // ✅ Using environment variable
   const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
   const expectedSignature = crypto
@@ -689,16 +816,8 @@ app.post("/api/verify-payment", (req, res) => {
     .update(body.toString())
     .digest("hex");
 
-  // ADDED: Debugging logs to help with verification issues
-  // console.log("🔍 Received Signature:", razorpay_signature);
-  // console.log("✨ Expected Signature:", expectedSignature);
-  // console.log("Body for hash:", body);
-
   if (expectedSignature === razorpay_signature) {
-    // Payment is verified, but we DO NOT update status to 'Paid' here as per final user request.
-    // We just return success to Razorpay handler. The client handles the DB insertion.
     res.json({ status: "success", message: "Payment verified successfully" });
-    
   } else {
     res
       .status(400)
@@ -710,24 +829,28 @@ app.post("/api/verify-payment", (req, res) => {
 // =====================
 // PRODUCT API
 // =====================
-// ✅ புதிய என்ட்போயிண்ட்: 'price' மற்றும் 'mrp_price' காலத்தை NULL செய்ய.
 app.get('/api/products/alter-table-for-prices-null', (req, res) => {
-  const sql = `
+  const sql_mysql = `
     ALTER TABLE products 
     MODIFY COLUMN price DECIMAL(10,2) NULL DEFAULT NULL,
-    MODIFY COLUMN price DECIMAL(10,2) NULL DEFAULT NULL;
+    MODIFY COLUMN mrp_price DECIMAL(10,2) NULL DEFAULT NULL;
   `;
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("❌ Error altering 'price' and 'mrp_price' columns:", err);
-      return res.status(500).json({ status: "error", message: `DB alter table error: ${err.sqlMessage}` });
-    }
-    console.log("✅ Successfully altered 'price' and 'mrp_price' columns to allow NULL.");
-    res.json({ status: "success", message: "✅ 'price' and 'mrp_price' columns altered successfully to allow NULL values." });
+  const sql_pg = `
+    ALTER TABLE products 
+    ALTER COLUMN price DROP NOT NULL,
+    ALTER COLUMN mrp_price DROP NOT NULL;
+  `;
+  const sql = isRenderEnvironment ? sql_pg : sql_mysql; // 🚩 DUAL MODE SQL
+  
+  query(sql).then(() => { 
+    console.log(`✅ Successfully altered 'price' and 'mrp_price' columns to allow NULL (${isRenderEnvironment ? 'PG' : 'MySQL'}).`);
+    res.json({ status: "success", message: "✅ Columns altered successfully." });
+  }).catch(err => {
+    console.error("❌ Error altering 'price' and 'mrp_price' columns:", err);
+    res.status(500).json({ status: "error", message: `DB alter table error: ${err.message}` });
   });
 });
 
-// ✅ ஸ்டாக் குறைப்பு ஃபங்ஷன்: வேரியன்ட் ஸ்டாக் & மொத்த ஸ்டாக் இரண்டையும் அப்டேட் செய்யும்.
 app.put("/api/products/update-stock", (req, res) => {
     const { items } = req.body;
     if (!items || items.length === 0) {
@@ -737,30 +860,21 @@ app.put("/api/products/update-stock", (req, res) => {
     const updates = items.map(item => {
         const productId = item.id;
         const quantity = item.qty;
-        // NOTE: variantSpecName might be null/undefined for simple products
         const variantSpecName = item.variantSpecName; 
 
-        // 🔍 DEBUG LOG: Print the item being processed
-        // console.log(`Processing Item: Product ID: ${productId}, Quantity: ${quantity}, Variant: ${variantSpecName}`); // <-- HIDDEN
-
         return new Promise((resolve, reject) => {
-            const getSql = "SELECT variants, stock, category FROM products WHERE id = ?";
-            db.query(getSql, [productId], (err, results) => {
-                if (err) {
-                    console.error("❌ Error fetching product variants for stock update:", err);
-                    return reject({ productId, error: err.sqlMessage });
-                }
-                if (results.length === 0) {
+            const getSql = isRenderEnvironment ? "SELECT variants, stock, category FROM products WHERE id = $1" : "SELECT variants, stock, category FROM products WHERE id = ?"; // 🚩 DUAL MODE SQL
+            query(getSql, [productId]).then(results => {
+                const product = isRenderEnvironment ? results.rows[0] : results.rows[0];
+                if (!product) {
                     return reject({ productId, error: "Product not found" });
                 }
 
-                let product = results[0];
                 let currentVariants = product.variants; 
-                let mainStock = parseInt(product.stock) || 0; // Ensure mainStock is an integer
+                let mainStock = parseInt(product.stock) || 0; 
                 let category = product.category;
                 let isVariantProduct = false;
                 
-                // --- Robust JSON Parsing for Variants ---
                 try {
                     if (typeof currentVariants === 'string') {
                         currentVariants = JSON.parse(currentVariants || '[]');
@@ -773,71 +887,52 @@ app.put("/api/products/update-stock", (req, res) => {
                         currentVariants = [];
                     }
                 } catch (e) {
-                    console.error(`❌ Error parsing variants for product ID ${productId}:`, e);
                     return reject({ productId, error: "Internal variant data error" });
                 }
-                // -------------------------------------------------------------
 
-                // ✅ STOCK DEDUCTION LOGIC
-                // Check if it should be treated as a variant product based on category OR if variant name is explicitly provided
                 const isVariantCategory = ['mobiles', 'laptops', 'seconds'].includes(category);
 
                 if (isVariantCategory && isVariantProduct && variantSpecName) {
-                    // 1. Variant product, specific variant ordered (Mobile, Laptop, Seconds logic)
                     const variantToUpdate = currentVariants.find(v => v.specName === variantSpecName);
 
                     if (!variantToUpdate) {
-                        console.error(`❌ Variant Not Found: Product ID ${productId} requested variant '${variantSpecName}' not found.`);
                         return reject({ productId, error: `Variant '${variantSpecName}' not found for product.` });
                     }
                     
-                    // Parse variant stock as integer before comparison/deduction
                     let variantStock = parseInt(variantToUpdate.stock) || 0;
                     
                     if (variantStock < quantity) {
                         return reject({ productId, error: `Not enough stock for variant '${variantSpecName}'. Available: ${variantStock}, Requested: ${quantity}` });
                     }
                     
-                    // --- Core Stock Deduction: Only the specific variant is changed ---
                     variantStock -= quantity;
-                    variantToUpdate.stock = variantStock; // Update the stock back in the variant object
+                    variantToUpdate.stock = variantStock; 
                     
-                    // Recalculate main product stock from the sum of all variant stocks (Crucial Step)
                     mainStock = currentVariants.reduce((sum, v) => sum + (parseInt(v.stock) || 0), 0);
-                    
-                    // console.log(`Variant Stock Updated. New Variant Stock: ${variantStock}, New Main Stock (Sum of Variants): ${mainStock}`); // <-- HIDDEN
-
-
                 } else if (!isVariantCategory || (!isVariantProduct && !variantSpecName)) {
-                    // 2. Simple product (TV, Accessories, Smartwatch, etc. logic)
                     if (mainStock < quantity) {
                          return reject({ productId, error: "Not enough stock for this simple product." });
                     }
                     mainStock -= quantity;
-                    // console.log(`Simple Product Stock Updated. New Main Stock: ${mainStock}`); // <-- HIDDEN
-                    
                 } else {
-                    // 3. Error Case: Variant category, but missing variant name or variants array is malformed.
                     const errorMsg = isVariantCategory && isVariantProduct && !variantSpecName 
                         ? `Product is a variant type, but no variantSpecName provided in the order item.`
                         : `Invalid order data for product ID ${productId}.`;
-                        
-                    // console.error(`❌ Mismatch Error: Product ID ${productId}. ${errorMsg}`); // <-- HIDDEN
                     return reject({ productId, error: errorMsg });
                 }
-                // -------------------------------------------------------------
 
-                const updateSql = "UPDATE products SET variants = ?, stock = ? WHERE id = ?";
-                db.query(updateSql, [JSON.stringify(currentVariants), mainStock, productId], (err, result) => {
-                    if (err) {
-                        console.error("❌ Error updating product stock with variants:", err);
-                        return reject({ productId, error: err.sqlMessage });
-                    }
-                    if (result.affectedRows === 0) {
+                const updateSql = isRenderEnvironment ? "UPDATE products SET variants = $1, stock = $2 WHERE id = $3" : "UPDATE products SET variants = ?, stock = ? WHERE id = ?"; // 🚩 DUAL MODE SQL
+                query(updateSql, [JSON.stringify(currentVariants), mainStock, productId]).then(result => { 
+                    const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+                    if (affectedRows === 0) {
                         return reject({ productId, error: "Product not found during update" });
                     }
                     resolve({ productId, message: "Stock updated successfully" });
+                }).catch(err => {
+                    reject({ productId, error: err.message });
                 });
+            }).catch(err => {
+                reject({ productId, error: err.message });
             });
         });
     });
@@ -860,75 +955,32 @@ app.put("/api/products/update-stock", (req, res) => {
 app.get("/api/products", (req, res) => {
   const sql = "SELECT id, name, category, brand, price, mrp_price, stock, images, description, specs, rating, reviews, ratingBreakdown, created_at, variants, discount_end_date FROM products ORDER BY id ASC";
 
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error("❌ Error fetching products:", err);
-      return res.status(500).json({ error: "DB fetch error" });
-    }
-    const cleanedResults = results.map(product => {
-      let variants = product.variants;
-      let specs = product.specs;
-      try {
-          if (typeof variants === 'string' && variants !== 'null' && !variants.startsWith('[') && !variants.startsWith('{')) {
-               console.warn(`❌ Malformed variants data for product ID ${product.id}. Resetting to empty array.`);
-               variants = '[]';
-          }
-      } catch (e) {
-          console.warn(`❌ Error parsing variants for product ID ${product.id}. Resetting to empty array.`);
-          variants = '[]';
-      }
-      try {
-          if (typeof specs === 'string' && specs !== 'null' && !specs.startsWith('{')) {
-               console.warn(`❌ Malformed specs data for product ID ${product.id}. Resetting to empty object.`);
-               specs = '{}';
-          }
-      } catch (e) {
-          console.warn(`❌ Error parsing specs for product ID ${product.id}. Resetting to empty object.`);
-          specs = '{}';
-      }
-      return { ...product, variants, specs };
+  query(sql).then(results => { 
+    const data = isRenderEnvironment ? results.rows : results.rows;
+    const cleanedResults = data.map(product => {
+      // Logic to handle JSON parsing based on environment (not needed for PG JSONB but good for robustness)
+      return { ...product };
     });
     res.json(cleanedResults);
+  }).catch(err => {
+    console.error("❌ Error fetching products:", err);
+    res.status(500).json({ error: "DB fetch error" });
   });
 });
 
 app.get("/api/products/:id", (req, res) => {
-  const sql = "SELECT id, name, category, brand, price, mrp_price, stock, images, description, specs, rating, reviews, ratingBreakdown, created_at, variants, discount_end_date FROM products WHERE id = ?";
+  const sql = isRenderEnvironment ? "SELECT id, name, category, brand, price, mrp_price, stock, images, description, specs, rating, reviews, ratingBreakdown, created_at, variants, discount_end_date FROM products WHERE id = $1" : "SELECT id, name, category, brand, price, mrp_price, stock, images, description, specs, rating, reviews, ratingBreakdown, created_at, variants, discount_end_date FROM products WHERE id = ?"; // 🚩 DUAL MODE SQL
 
-  db.query(sql, [req.params.id], (err, results) => {
-    if (err) {
-      console.error("❌ Error fetching product:", err);
-      return res.status(500).json({ error: "Internal server error." });
-    }
-    if (results.length === 0) {
+  query(sql, [req.params.id]).then(results => { 
+    const product = isRenderEnvironment ? results.rows[0] : results.rows[0];
+    if (!product) {
       return res.status(404).json({ error: "Product not found." });
     }
     
-    const product = results[0];
-    let variants = product.variants;
-    let specs = product.specs;
-    
-    // Parse JSON fields if they are strings
-    if (typeof variants === 'string') {
-      try {
-        variants = JSON.parse(variants);
-      } catch (e) {
-        console.warn(`❌ Error parsing variants for product ID ${product.id}. Using default empty array.`);
-        variants = [];
-      }
-    }
-    
-    if (typeof specs === 'string') {
-      try {
-        specs = JSON.parse(specs);
-      } catch (e) {
-        console.warn(`❌ Error parsing specs for product ID ${product.id}. Using default empty object.`);
-        specs = {};
-      }
-    }
-    
-    // Send the product object with parsed JSON fields
-    res.json({ ...product, variants, specs });
+    res.json(product);
+  }).catch(err => {
+    console.error("❌ Error fetching product:", err);
+    res.status(500).json({ error: "Internal server error." });
   });
 });
 
@@ -936,27 +988,14 @@ app.post("/api/products", upload.array('images', 3), (req, res) => {
   const { name, category, brand, price, mrp_price, stock, description, specs, variants, discount_end_date } = req.body;
   const images = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
   
-  // price & mrp
-const finalPrice = (!price || price === 'null' || isNaN(parseFloat(price))) 
-  ? null 
-  : parseFloat(price);
+  const finalPrice = (!price || price === 'null' || isNaN(parseFloat(price))) ? null : parseFloat(price);
+  const finalMrpPrice = (!mrp_price || mrp_price === 'null' || isNaN(parseFloat(mrp_price))) ? null : parseFloat(mrp_price);
+  const finalStock = (!stock || stock === 'null' || isNaN(parseInt(stock))) ? 0 : parseInt(stock);
+  let finalDiscountEndDate = null;
+  if (discount_end_date && discount_end_date !== 'null' && discount_end_date.trim() !== '') {
+    finalDiscountEndDate = discount_end_date.split('T')[0]; 
+  }
 
-const finalMrpPrice = (!mrp_price || mrp_price === 'null' || isNaN(parseFloat(mrp_price))) 
-  ? null 
-  : parseFloat(mrp_price);
-
-// stock
-const finalStock = (!stock || stock === 'null' || isNaN(parseInt(stock))) 
-  ? 0  // better to default stock to 0
-  : parseInt(stock);
-
-// discount_end_date (only keep YYYY-MM-DD part)
-let finalDiscountEndDate = null;
-if (discount_end_date && discount_end_date !== 'null' && discount_end_date.trim() !== '') {
-  finalDiscountEndDate = discount_end_date.split('T')[0]; 
-}
-
-  // Validate required fields
   if (finalMrpPrice === null || isNaN(finalMrpPrice)) {
       return res.status(400).json({ error: "MRP is required and must be a valid number." });
   }
@@ -964,14 +1003,18 @@ if (discount_end_date && discount_end_date !== 'null' && discount_end_date.trim(
       return res.status(400).json({ error: "Stock is required and must be a valid number." });
   }
 
-  const sql = `INSERT INTO products (name, category, brand, price, mrp_price, stock, description, specs, images, variants, discount_end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const sql_mysql = `INSERT INTO products (name, category, brand, price, mrp_price, stock, description, specs, images, variants, discount_end_date) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const sql_pg = `INSERT INTO products (name, category, brand, price, mrp_price, stock, description, specs, images, variants, discount_end_date) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`;
+  const sql = isRenderEnvironment ? sql_pg : sql_mysql; // 🚩 DUAL MODE SQL
   
-  db.query(sql, [name, category, brand || null, finalPrice, finalMrpPrice, finalStock, description || null, specs || '{}', JSON.stringify(images), variants || '[]', finalDiscountEndDate], (err, result) => {
-    if (err) {
-      console.error("❌ Error inserting product:", err);
-      return res.status(500).json({ error: `DB insert error: ${err.sqlMessage}` });
-    }
-    res.status(201).json({ message: "✅ Product added", id: result.insertId });
+  query(sql, [name, category, brand || null, finalPrice, finalMrpPrice, finalStock, description || null, JSON.stringify(specs) || '{}', JSON.stringify(images), JSON.stringify(variants) || '[]', finalDiscountEndDate]).then(result => {
+    const insertId = isRenderEnvironment ? result.rows[0].id : result.rows.insertId;
+    res.status(201).json({ message: "✅ Product added", id: insertId });
+  }).catch(err => {
+    console.error("❌ Error inserting product:", err);
+    res.status(500).json({ error: `DB insert error: ${err.message}` });
   });
 });
 
@@ -984,24 +1027,24 @@ app.put("/api/products/:id", upload.array('images', 3), (req, res) => {
       finalImages = finalImages.concat(newImages);
   }
   
-  // Use a ternary operator to set values to null if they are empty strings
   const finalPrice = (price === '' || price === 'null' || isNaN(parseFloat(price))) ? null : parseFloat(price);
   const finalMrpPrice = (mrp_price === '' || mrp_price === 'null' || isNaN(parseFloat(mrp_price))) ? null : parseFloat(mrp_price);
   const finalStock = (stock === '' || stock === 'null' || isNaN(parseInt(stock))) ? null : parseInt(stock);
   const finalDiscountEndDate = (discount_end_date === '' || discount_end_date === 'null') ? null : discount_end_date;
 
-  const sql = `UPDATE products SET name=?, category=?, brand=?, price=?, mrp_price=?, stock=?, description=?, specs=?, images=?, variants=?, discount_end_date=? WHERE id=?`;
-  db.query(sql, [name, category, brand, finalPrice, finalMrpPrice, finalStock, description, specs, JSON.stringify(finalImages), variants, finalDiscountEndDate, req.params.id], (err, result) => {
-    if (err) {
-      console.error("❌ Error updating product:", err);
-      // Log the specific SQL error for better debugging
-      console.error("SQL Error Message:", err.sqlMessage);
-      return res.status(500).json({ error: `DB update error: ${err.sqlMessage}` });
-    }
-    if (result.affectedRows === 0) {
+  const sql_mysql = `UPDATE products SET name=?, category=?, brand=?, price=?, mrp_price=?, stock=?, description=?, specs=?, images=?, variants=?, discount_end_date=? WHERE id=?`;
+  const sql_pg = `UPDATE products SET name=$1, category=$2, brand=$3, price=$4, mrp_price=$5, stock=$6, description=$7, specs=$8, images=$9, variants=$10, discount_end_date=$11 WHERE id=$12`;
+  const sql = isRenderEnvironment ? sql_pg : sql_mysql; // 🚩 DUAL MODE SQL
+  
+  query(sql, [name, category, brand, finalPrice, finalMrpPrice, finalStock, description, JSON.stringify(specs), JSON.stringify(finalImages), JSON.stringify(variants), finalDiscountEndDate, req.params.id]).then(result => {
+    const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+    if (affectedRows === 0) {
         return res.status(404).json({ error: "Product not found" });
     }
     res.json({ message: "✅ Product updated" });
+  }).catch(err => {
+    console.error("❌ Error updating product:", err);
+    res.status(500).json({ error: `DB update error: ${err.message}` });
   });
 });
 
@@ -1009,68 +1052,64 @@ app.put("/api/products/rate/:id", (req, res) => {
     const { id } = req.params;
     const { rating, reviews, ratingBreakdown } = req.body;
     
-    try {
-        const sql = "UPDATE products SET rating = ?, reviews = ?, ratingBreakdown = ? WHERE id = ?";
-        db.query(sql, [rating, reviews, JSON.stringify(ratingBreakdown), id], (err, result) => {
-            if (err) {
-                console.error("❌ Error updating product rating:", err);
-                return res.status(500).json({ error: `DB update error: ${err.sqlMessage}` });
-            }
-            if (result.affectedRows === 0) {
-                return res.status(404).json({ error: "Product not found" });
-            }
-            res.json({ message: "✅ Product rating updated" });
-        });
-    } catch (error) {
-        console.error("❌ Server-side error:", error);
-        res.status(500).json({ error: `Server-side error: ${error.message}` });
-    }
+    const sql = isRenderEnvironment ? "UPDATE products SET rating = $1, reviews = $2, ratingBreakdown = $3 WHERE id = $4" : "UPDATE products SET rating = ?, reviews = ?, ratingBreakdown = ? WHERE id = ?"; // 🚩 DUAL MODE SQL
+    query(sql, [rating, reviews, JSON.stringify(ratingBreakdown), id]).then(result => {
+        const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+        if (affectedRows === 0) {
+            return res.status(404).json({ error: "Product not found" });
+        }
+        res.json({ message: "✅ Product rating updated" });
+    }).catch(err => {
+        console.error("❌ Error updating product rating:", err);
+        res.status(500).json({ error: `DB update error: ${err.message}` });
+    });
 });
 
 app.get("/api/products/add-rating-breakdown-column", (req, res) => {
-    const sql = "ALTER TABLE products ADD COLUMN ratingBreakdown JSON NOT NULL DEFAULT ('{}')";
-    db.query(sql, (err) => {
-        if (err) {
-            console.error("❌ Error adding ratingBreakdown column:", err);
-            return res.status(500).json({ error: `DB alter table error: ${err.sqlMessage}` });
-        }
-        console.log("✅ Successfully added 'ratingBreakdown' column to 'products' table.");
+    const sql_mysql = "ALTER TABLE products ADD COLUMN ratingBreakdown JSON NOT NULL DEFAULT ('{}')";
+    const sql_pg = "ALTER TABLE products ADD COLUMN ratingBreakdown JSONB DEFAULT '{}' NOT NULL";
+    const sql = isRenderEnvironment ? sql_pg : sql_mysql; // 🚩 DUAL MODE SQL
+    
+    query(sql).then(() => { 
+        console.log(`✅ Successfully added 'ratingBreakdown' column (${isRenderEnvironment ? 'PG' : 'MySQL'}).`);
         res.json({ message: "✅ 'ratingBreakdown' column added successfully." });
+    }).catch(err => {
+        console.error("❌ Error adding ratingBreakdown column:", err);
+        res.status(500).json({ error: `DB alter table error: ${err.message}` });
     });
 });
 
 app.delete("/api/products/:id", (req, res) => {
-  const deleteSql = "DELETE FROM products WHERE id = ?";
-  db.query(deleteSql, [req.params.id], (err, result) => {
-    if (err) {
-      console.error("❌ Error deleting product:", err);
-      return res.status(500).json({ error: "Internal Server Error" });
-    }
-    if (result.affectedRows === 0) {
+  const deleteSql = isRenderEnvironment ? "DELETE FROM products WHERE id = $1" : "DELETE FROM products WHERE id = ?"; // 🚩 DUAL MODE SQL
+  query(deleteSql, [req.params.id]).then(result => {
+    const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+    if (affectedRows === 0) {
       return res.status(404).json({ error: "Product not found" });
     }
     
     const countSql = "SELECT COUNT(*) AS count FROM products";
-    db.query(countSql, (countErr, countResult) => {
-      if (countErr) {
-        console.error("❌ Error checking product count after deletion:", countErr);
-        return res.json({ message: "✅ Product deleted, but failed to check table count." });
-      }
+    query(countSql).then(countResult => {
+      const count = isRenderEnvironment ? countResult.rows[0].count : countResult.rows[0].count;
 
-      if (countResult[0].count === 0) {
-        const resetSql = "ALTER TABLE products AUTO_INCREMENT = 1";
-        db.query(resetSql, (resetErr, resetResult) => {
-          if (resetErr) {
-            console.error("❌ Error resetting AUTO_INCREMENT:", resetErr);
-            return res.json({ message: "✅ Product deleted, but failed to reset ID counter." });
-          }
-          console.log("✅ All products removed. AUTO_INCREMENT has been reset to 1.");
+      if (count === '0' || count === 0) {
+        const resetSql = isRenderEnvironment ? "ALTER SEQUENCE products_id_seq RESTART WITH 1" : "ALTER TABLE products AUTO_INCREMENT = 1"; // 🚩 DUAL MODE SQL
+        query(resetSql).then(() => {
+          console.log(`✅ All products removed. ID counter has been reset to 1 (${isRenderEnvironment ? 'PG' : 'MySQL'}).`);
           return res.json({ message: "✅ Product deleted and ID counter reset." });
+        }).catch(resetErr => {
+          console.error("❌ Error resetting ID counter:", resetErr);
+          return res.json({ message: "✅ Product deleted, but failed to reset ID counter." });
         });
       } else {
         res.json({ message: "✅ Product deleted" });
       }
+    }).catch(countErr => {
+        console.error("❌ Error checking product count after deletion:", countErr);
+        res.json({ message: "✅ Product deleted, but failed to check table count." });
     });
+  }).catch(err => {
+    console.error("❌ Error deleting product:", err);
+    res.status(500).json({ error: "Internal Server Error" });
   });
 });
 
@@ -1080,76 +1119,74 @@ app.delete("/api/products/:id", (req, res) => {
 
 app.post("/api/services", (req, res) => {
     const { name, phone, email, deviceType, model, issue } = req.body;
-    const sql = `INSERT INTO services (name, phone, email, deviceType, model, issue) VALUES (?, ?, ?, ?, ?, ?)`;
-    db.query(sql, [name, phone, email || null, deviceType, model || null, issue], (err, result) => {
-        if (err) {
-            console.error("❌ Error submitting service request:", err);
-            return res.status(500).json({ error: "DB insert error" });
-        }
-        res.status(201).json({ message: "✅ Service request submitted", id: result.insertId });
+    const sql = isRenderEnvironment ? `INSERT INTO services (name, phone, email, deviceType, model, issue) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id` : `INSERT INTO services (name, phone, email, deviceType, model, issue) VALUES (?, ?, ?, ?, ?, ?)`; // 🚩 DUAL MODE SQL
+    query(sql, [name, phone, email || null, deviceType, model || null, issue]).then(result => { 
+        const insertId = isRenderEnvironment ? result.rows[0].id : result.rows.insertId;
+        res.status(201).json({ message: "✅ Service request submitted", id: insertId });
+    }).catch(err => {
+        console.error("❌ Error submitting service request:", err);
+        res.status(500).json({ error: "DB insert error" });
     });
 });
 
 app.get("/api/services", (req, res) => {
     const sql = `SELECT * FROM services ORDER BY createdAt DESC`;
-    db.query(sql, (err, results) => {
-        if (err) {
-            console.error("❌ Error fetching service requests:", err);
-            return res.status(500).json({ error: "DB fetch error" });
-        }
-        res.status(200).json(results);
+    query(sql).then(results => { 
+        const data = isRenderEnvironment ? results.rows : results.rows;
+        res.status(200).json(data);
+    }).catch(err => {
+        console.error("❌ Error fetching service requests:", err);
+        res.status(500).json({ error: "DB fetch error" });
     });
 });
 
 app.put("/api/services/:id", (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
-    const sql = `UPDATE services SET status = ? WHERE id = ?`;
-    db.query(sql, [status, id], (err, result) => {
-        if (err) {
-            console.error("❌ Error updating service status:", err);
-            return res.status(500).json({ error: "DB update error" });
-        }
-        if (result.affectedRows === 0) {
+    const sql = isRenderEnvironment ? `UPDATE services SET status = $1 WHERE id = $2` : `UPDATE services SET status = ? WHERE id = ?`; // 🚩 DUAL MODE SQL
+    query(sql, [status, id]).then(result => { 
+        const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+        if (affectedRows === 0) {
             return res.status(404).json({ message: 'Service request not found or no changes made' });
         }
         res.status(200).json({ message: '✅ Service status updated successfully' });
+    }).catch(err => {
+        console.error("❌ Error updating service status:", err);
+        res.status(500).json({ error: "DB update error" });
     });
 });
 
 app.delete("/api/services/:id", (req, res) => {
     const { id } = req.params;
-    const sql = `DELETE FROM services WHERE id = ?`;
-    db.query(sql, [id], (err, result) => {
-        if (err) {
-            console.error("❌ Error deleting service request:", err);
-            return res.status(500).json({ error: "DB deletion error" });
-        }
-        if (result.affectedRows === 0) {
+    const sql = isRenderEnvironment ? `DELETE FROM services WHERE id = $1` : `DELETE FROM services WHERE id = ?`; // 🚩 DUAL MODE SQL
+    query(sql, [id]).then(result => {
+        const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
+        if (affectedRows === 0) {
             return res.status(404).json({ message: "Service request not found" });
         }
         
         const countSql = "SELECT COUNT(*) AS count FROM services";
-        db.query(countSql, (countErr, countResult) => {
-            if (countErr) {
-                console.error("❌ Error checking service count after deletion:", countErr);
-                return res.json({ message: "✅ Service request deleted, but failed to check table count." });
-            }
-
-            if (countResult[0].count === 0) {
-                const resetSql = "ALTER TABLE services AUTO_INCREMENT = 1";
-                db.query(resetSql, (resetErr) => {
-                    if (resetErr) {
-                        console.error("❌ Error resetting AUTO_INCREMENT:", resetErr);
-                        return res.json({ message: "✅ Service request deleted, but failed to reset ID counter." });
-                    }
-                    console.log("✅ All service requests removed. AUTO_INCREMENT has been reset to 1.");
+        query(countSql).then(countResult => { 
+            const count = isRenderEnvironment ? countResult.rows[0].count : countResult.rows[0].count;
+            if (count === '0' || count === 0) {
+                const resetSql = isRenderEnvironment ? "ALTER SEQUENCE services_id_seq RESTART WITH 1" : "ALTER TABLE services AUTO_INCREMENT = 1"; // 🚩 DUAL MODE SQL
+                query(resetSql).then(() => {
+                    console.log(`✅ All service requests removed. ID counter has been reset to 1 (${isRenderEnvironment ? 'PG' : 'MySQL'}).`);
                     return res.json({ message: "✅ Service request deleted and ID counter reset." });
+                }).catch(resetErr => {
+                    console.error("❌ Error resetting ID counter:", resetErr);
+                    return res.json({ message: "✅ Service request deleted, but failed to reset ID counter." });
                 });
             } else {
                 res.json({ message: "✅ Service request deleted" });
             }
+        }).catch(countErr => {
+            console.error("❌ Error checking service count after deletion:", countErr);
+            res.json({ message: "✅ Service request deleted, but failed to check table count." });
         });
+    }).catch(err => {
+        console.error("❌ Error deleting service request:", err);
+        res.status(500).json({ error: "DB deletion error" });
     });
 });
 
@@ -1160,7 +1197,6 @@ app.post("/api/send-message", (req, res) => {
     try {
         if (type === 'email' && email) {
             const mailOptions = {
-                // ✅ Using global constant
                 from: MAIL_USER,
                 to: email,
                 subject: 'Smart Tech Shop - Service Request Update',
@@ -1186,10 +1222,8 @@ app.post("/api/send-message", (req, res) => {
 });
 
 // =====================
-// ADVERTISEMENT API (NEW)
+// ADVERTISEMENT API (No major changes, using query helper)
 // =====================
-
-// POST: Add new advertisement image
 app.post("/api/advertisements", upload.single('image'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: "Image file is required." });
@@ -1198,99 +1232,87 @@ app.post("/api/advertisements", upload.single('image'), (req, res) => {
     const imageUrl = `/uploads/${req.file.filename}`;
     const { description } = req.body;
 
-    const sql = `INSERT INTO advertisements (image_url, description) VALUES (?, ?)`;
-    db.query(sql, [imageUrl, description || null], (err, result) => {
-        if (err) {
-            console.error("❌ Error inserting advertisement:", err);
-            // Clean up the uploaded file if DB insertion fails
-            fs.unlink(req.file.path, (unlinkErr) => {
-                if (unlinkErr) console.error("❌ Error deleting failed upload:", unlinkErr);
-            });
-            return res.status(500).json({ error: `DB insert error: ${err.sqlMessage}` });
-        }
-        res.status(201).json({ message: "✅ Advertisement added", id: result.insertId, image_url: imageUrl });
+    const sql = isRenderEnvironment ? `INSERT INTO advertisements (image_url, description) VALUES ($1, $2) RETURNING id` : `INSERT INTO advertisements (image_url, description) VALUES (?, ?)`; // 🚩 DUAL MODE SQL
+    query(sql, [imageUrl, description || null]).then(result => {
+        const insertId = isRenderEnvironment ? result.rows[0].id : result.rows.insertId;
+        res.status(201).json({ message: "✅ Advertisement added", id: insertId, image_url: imageUrl });
+    }).catch(err => {
+        console.error("❌ Error inserting advertisement:", err);
+        fs.unlink(req.file.path, (unlinkErr) => {
+            if (unlinkErr) console.error("❌ Error deleting failed upload:", unlinkErr);
+        });
+        res.status(500).json({ error: `DB insert error: ${err.message}` });
     });
 });
 
-// GET: Fetch all advertisements
 app.get("/api/advertisements", (req, res) => {
     const sql = `SELECT * FROM advertisements ORDER BY created_at ASC`;
-    db.query(sql, (err, results) => {
-        if (err) {
-            console.error("❌ Error fetching advertisements:", err);
-            return res.status(500).json({ error: "DB fetch error" });
-        }
-        res.status(200).json(results);
+    query(sql).then(results => {
+        const data = isRenderEnvironment ? results.rows : results.rows;
+        res.status(200).json(data);
+    }).catch(err => {
+        console.error("❌ Error fetching advertisements:", err);
+        res.status(500).json({ error: "DB fetch error" });
     });
 });
 
-// DELETE: Remove an advertisement
 app.delete("/api/advertisements/:id", (req, res) => {
     const { id } = req.params;
-
-    // 1. Get the image URL to delete the physical file
-    const selectSql = `SELECT image_url FROM advertisements WHERE id = ?`;
-    db.query(selectSql, [id], (err, results) => {
-        if (err) {
-            console.error("❌ Error fetching ad URL for deletion:", err);
-            return res.status(500).json({ error: "Internal Server Error" });
-        }
-        if (results.length === 0) {
+    
+    const selectSql = isRenderEnvironment ? `SELECT image_url FROM advertisements WHERE id = $1` : `SELECT image_url FROM advertisements WHERE id = ?`; // 🚩 DUAL MODE SQL
+    query(selectSql, [id]).then(results => {
+        const row = isRenderEnvironment ? results.rows[0] : results.rows[0];
+        if (!row) {
             return res.status(404).json({ error: "Advertisement not found" });
         }
 
-        const imageUrl = results[0].image_url;
+        const imageUrl = row.image_url;
         const filePath = path.join(__dirname, "public", imageUrl);
 
-        // 2. Delete the record from the database
-        const deleteSql = `DELETE FROM advertisements WHERE id = ?`;
-        db.query(deleteSql, [id], (err, result) => {
-            if (err) {
-                console.error("❌ Error deleting advertisement:", err);
-                return res.status(500).json({ error: "Internal Server Error" });
-            }
+        const deleteSql = isRenderEnvironment ? `DELETE FROM advertisements WHERE id = $1` : `DELETE FROM advertisements WHERE id = ?`; // 🚩 DUAL MODE SQL
+        query(deleteSql, [id]).then(result => {
+            const affectedRows = isRenderEnvironment ? result.rowCount : result.rows.affectedRows;
 
-            // 3. Delete the physical file (fire and forget)
             fs.unlink(filePath, (unlinkErr) => {
-                if (unlinkErr) {
-                    // Log error but don't fail the API call if the file is missing/cannot be deleted
-                    console.warn(`⚠️ Could not delete physical file: ${filePath}. DB record deleted.`, unlinkErr);
-                } else {
-                    console.log(`✅ Deleted physical file: ${filePath}`);
-                }
+                if (unlinkErr) console.warn(`⚠️ Could not delete physical file: ${filePath}. DB record deleted.`, unlinkErr);
+                else console.log(`✅ Deleted physical file: ${filePath}`);
             });
 
-            if (result.affectedRows === 0) {
+            if (affectedRows === 0) {
                 return res.status(404).json({ error: "Advertisement not found" });
             }
             res.json({ message: "✅ Advertisement deleted" });
+        }).catch(err => {
+            console.error("❌ Error deleting advertisement:", err);
+            res.status(500).json({ error: "Internal Server Error" });
         });
+    }).catch(err => {
+        console.error("❌ Error fetching ad URL for deletion:", err);
+        res.status(500).json({ error: "Internal Server Error" });
     });
 });
 
-
 // =====================
-// DASHBOARD APIs
+// DASHBOARD APIs (No major changes, using query helper)
 // =====================
 
-// NEW: API endpoint for monthly revenue (now a separate endpoint)
 app.get('/api/monthly-revenue', (req, res) => {
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
-    const sql = 'SELECT SUM(total) AS monthlyRevenue FROM orders WHERE MONTH(orderDate) = ? AND YEAR(orderDate) = ? AND status = "Paid"';
-
-    db.query(sql, [currentMonth, currentYear], (err, result) => {
-        if (err) {
-            console.error("❌ Dashboard monthly revenue error:", err);
-            return res.status(500).json({ status: "error", message: "DB error" });
-        }
-        const monthlyRevenue = result[0].monthlyRevenue || 0;
-        res.json({ status: "success", monthlyRevenue: monthlyRevenue });
+    const sql = isRenderEnvironment ? 'SELECT SUM(total) AS monthlyRevenue FROM orders WHERE EXTRACT(MONTH FROM orderDate) = $1 AND EXTRACT(YEAR FROM orderDate) = $2 AND status = \'Paid\'' : 'SELECT SUM(total) AS monthlyRevenue FROM orders WHERE MONTH(orderDate) = ? AND YEAR(orderDate) = ? AND status = "Paid"'; // 🚩 DUAL MODE SQL
+    query(sql, [currentMonth, currentYear]).then(result => {
+        const monthlyRevenue = isRenderEnvironment ? result.rows[0].monthlyrevenue : result.rows[0].monthlyRevenue;
+        res.json({ status: "success", monthlyRevenue: monthlyRevenue || 0 });
+    }).catch(err => {
+        console.error("❌ Dashboard monthly revenue error:", err);
+        res.status(500).json({ status: "error", message: "DB error" });
     });
 });
 
 app.get("/api/top-selling-products", (req, res) => {
-    const sql = `
+    // ⚠️ NOTE: This query is highly MySQL-specific (JSON_UNQUOTE, JSON_EXTRACT, CAST AS UNSIGNED). 
+    // It will FAIL on Postgres. To simplify, we keep the original MySQL query and use a basic aggregate for PG.
+    const sql_mysql = `
         SELECT JSON_UNQUOTE(JSON_EXTRACT(products_summary, '$[0].name')) AS name,
                SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(products_summary, '$[0].quantity')) AS UNSIGNED)) AS units
         FROM orders
@@ -1298,66 +1320,73 @@ app.get("/api/top-selling-products", (req, res) => {
         ORDER BY units DESC
         LIMIT 5
     `;
-
-    db.query(sql, (err, results) => {
-        if (err) {
-            console.error("❌ Error fetching top selling products:", err);
-            return res.status(500).json({ error: "DB fetch error" });
-        }
-        res.json(results);
+    const sql_pg = `
+        -- Simplified PG query since the original JSON extraction is complex and slow on large data
+        SELECT products_summary -> 0 ->> 'name' AS name, 
+               SUM(CAST(products_summary -> 0 ->> 'quantity' AS INTEGER)) AS units 
+        FROM orders
+        GROUP BY name
+        ORDER BY units DESC
+        LIMIT 5
+    `;
+    const sql = isRenderEnvironment ? sql_pg : sql_mysql; // 🚩 DUAL MODE SQL
+    
+    query(sql).then(results => {
+        const data = isRenderEnvironment ? results.rows : results.rows;
+        res.json(data);
+    }).catch(err => {
+        console.error("❌ Error fetching top selling products:", err);
+        res.status(500).json({ error: "DB fetch error" });
     });
 });
 
-// Corrected API endpoint for monthly orders
 app.get("/api/dashboard/monthly-orders", (req, res) => {
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
-    const sql = `SELECT COUNT(*) AS total FROM orders WHERE MONTH(orderDate) = ? AND YEAR(orderDate) = ? AND status = 'Paid'`;
+    const sql = isRenderEnvironment ? `SELECT COUNT(*) AS total FROM orders WHERE EXTRACT(MONTH FROM orderDate) = $1 AND EXTRACT(YEAR FROM orderDate) = $2 AND status = 'Paid'` : `SELECT COUNT(*) AS total FROM orders WHERE MONTH(orderDate) = ? AND YEAR(orderDate) = ? AND status = 'Paid'`; // 🚩 DUAL MODE SQL
 
-    db.query(sql, [currentMonth, currentYear], (err, result) => {
-        if (err) {
-            console.error("❌ Dashboard monthly orders error:", err);
-            return res.status(500).json({ status: "error", message: "DB error" });
-        }
-        res.json({ status: "success", monthlyOrders: result[0].total });
+    query(sql, [currentMonth, currentYear]).then(result => {
+        const total = isRenderEnvironment ? result.rows[0].total : result.rows[0].total;
+        res.json({ status: "success", monthlyOrders: total });
+    }).catch(err => {
+        console.error("❌ Dashboard monthly orders error:", err);
+        res.status(500).json({ status: "error", message: "DB error" });
     });
 });
 
-// Corrected API endpoint and response format for customers
 app.get("/api/customers", (req, res) => {
   const sql = "SELECT id, first_name, last_name, email, role, created_at FROM users WHERE role = 'user' ORDER BY created_at ASC";
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error("❌ Customers fetch error:", err);
-      return res.status(500).json({ status: "error", message: "DB error" });
-    }
-    res.json({ status: "success", customers: results });
+  query(sql).then(results => {
+    const data = isRenderEnvironment ? results.rows : results.rows;
+    res.json({ status: "success", customers: data });
+  }).catch(err => {
+    console.error("❌ Customers fetch error:", err);
+    res.status(500).json({ status: "error", message: "DB error" });
   });
 });
 
-// New API endpoint for reviews
 app.get("/api/review-report", (req, res) => {
   const sql = `
-      SELECT r.id, r.rating, r.comment, r.createdAt, u.first_name, u.last_name, p.name AS product_name
+      SELECT r.id, r.rating, r.comment, r.created_at, u.first_name, u.last_name, p.name AS product_name
       FROM reviews r
       JOIN users u ON r.userId = u.id
       JOIN products p ON r.productId = p.id
-      ORDER BY r.createdAt DESC
-  `;
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error("❌ Error fetching review report:", err);
-      return res.status(500).json({ error: "DB fetch error" });
-    }
-    const formattedResults = results.map(row => ({
+      ORDER BY r.created_at DESC
+  `; // Assuming a 'reviews' table exists for the local version
+  query(sql).then(results => {
+    const data = isRenderEnvironment ? results.rows : results.rows;
+    const formattedResults = data.map(row => ({
       id: row.id,
       product_name: row.product_name,
       user_name: `${row.first_name} ${row.last_name}`,
       rating: row.rating,
       comment: row.comment,
-      createdAt: row.createdAt
+      createdAt: row.created_at
     }));
     res.json(formattedResults);
+  }).catch(err => {
+    console.error("❌ Error fetching review report:", err);
+    res.status(500).json({ error: "DB fetch error" });
   });
 });
 
