@@ -17,7 +17,6 @@ const $=sel=>document.querySelector(sel);
 const $$=sel=>document.querySelectorAll(sel);
 const chevronDownSVG=`<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/></svg>`;
 const arrowRightSVG=`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8z"/></svg>`;
-// NEW: Chevron right for category list
 const chevronRightSVG=`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>`;
 
 
@@ -32,7 +31,8 @@ function injectCSS(){
 // NEW FUNCTION: Fetch Advertisements
 async function fetchAdvertisements(){
     try{
-        const response = await fetch("http://localhost:5000/api/advertisements");
+        // 🚩 FIX: Removed localhost, using relative path
+        const response = await fetch("/api/advertisements");
         if(!response.ok){
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -50,7 +50,8 @@ async function fetchAdvertisements(){
 
 async function fetchProducts(){
     try{
-        const response=await fetch("http://localhost:5000/api/products");
+        // 🚩 FIX: Removed localhost, using relative path
+        const response=await fetch("/api/products");
         if(!response.ok){
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -1200,8 +1201,8 @@ async function placeOrder(e){
     if(paymentMethod==='online'||paymentMethod==='net_banking'){
         const amountInPaise=Math.round(Number(pricing.total)*100);
         try{
-            // **NEW LOGIC: ONLY Create Razorpay Order FIRST.**
-            const razorpayOrderRes=await fetch('http://localhost:5000/api/create-razorpay-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:amountInPaise,receipt:orderData.orderId})});
+            // 🚩 FIX: Removed localhost, using relative path
+            const razorpayOrderRes=await fetch('/api/create-razorpay-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:amountInPaise,receipt:orderData.orderId})});
             if(!razorpayOrderRes.ok){
                 const errorData=await razorpayOrderRes.json();
                 console.error("Razorpay Order Creation Failed:",errorData);
@@ -1234,7 +1235,8 @@ async function placeOrder(e){
                     
                     try{
                         // 1. Verify payment on server side
-                        const verifyRes=await fetch("http://localhost:5000/api/verify-payment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(response)});
+                        // 🚩 FIX: Removed localhost, using relative path
+                        const verifyRes=await fetch("/api/verify-payment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(response)});
                         
                         if(!verifyRes.ok){
                             throw new Error('Payment verification failed.');
@@ -1376,8 +1378,8 @@ async function finalizeClientOrder(orderData, items, billingInfo) {
 // MODIFIED: This function is now used ONLY to POST the final order data to the server.
 async function sendOrderToServer(orderData,items,billingInfo, shouldRedirect = true, sendOnly = false){
     try{
-        // 1. Send Order to Server (POST)
-        const response=await fetch('http://localhost:5000/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(orderData),});
+        // 🚩 FIX: Removed localhost, using relative path
+        const response=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(orderData),});
         
         if(!response.ok){
             const errorText=await response.text();
@@ -1403,7 +1405,8 @@ async function sendOrderToServer(orderData,items,billingInfo, shouldRedirect = t
 
 async function updateProductStock(items){
     try{
-        const response=await fetch('http://localhost:5000/api/products/update-stock',{method:'PUT',headers:{'Content-Type':'application/json',},body:JSON.stringify({items}),});
+        // 🚩 FIX: Removed localhost, using relative path
+        const response=await fetch('/api/products/update-stock',{method:'PUT',headers:{'Content-Type':'application/json',},body:JSON.stringify({items}),});
         const result=await response.json();
         if(!response.ok){
             console.error('Failed to update stock:',result.error);
@@ -1485,7 +1488,8 @@ function initMyOrdersPage(){
 
 async function fetchOrdersFromServer(email,container){
     try{
-        const response=await fetch(`http://localhost:5000/api/orders/user/${email}`);
+        // 🚩 FIX: Removed localhost, using relative path
+        const response=await fetch(`/api/orders/user/${email}`);
         const allOrders=await response.json();
         
         // Filter out orders the user has chosen to hide locally
@@ -1555,7 +1559,8 @@ function removeOrderFromLocalHistory(orderServerId, orderId){
 function cancelOrder(orderId){
     showConfirmation("Are you sure?",async()=>{
         try{
-            const response=await fetch(`http://localhost:5000/api/orders/${orderId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'Cancelled'})});
+            // 🚩 FIX: Removed localhost, using relative path
+            const response=await fetch(`/api/orders/${orderId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'Cancelled'})});
             if(response.ok){
                 showToast("Order cancelled.");
                 initMyOrdersPage();
@@ -1662,7 +1667,8 @@ async function submitRatingAndReview(){
     product.rating=parseFloat((totalStars/totalRatings).toFixed(1));
     REVIEWS[orderId][productId]={rating:rating,review:"",userName:currentUser.first_name,date:new Date().toLocaleDateString()};
     try{
-        const response=await fetch(`http://localhost:5000/api/products/rate/${productId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({rating:product.rating,reviews:product.reviews,ratingBreakdown:product.ratingBreakdown})});
+        // 🚩 FIX: Removed localhost, using relative path
+        const response=await fetch(`/api/products/rate/${productId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({rating:product.rating,reviews:product.reviews,ratingBreakdown:product.ratingBreakdown})});
         if(!response.ok){
             const errorData=await response.json();
             throw new Error(errorData.error||'Failed to update rating on server.');
@@ -1859,7 +1865,8 @@ async function handleModalLogin(e){
     const loginButton=e.target.querySelector('button[type="submit"]');
     loginButton.disabled=true;
     try{
-        const res=await fetch("http://localhost:5000/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+        // 🚩 FIX: Removed localhost, using relative path
+        const res=await fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
         if(!res.ok){
             const errorText=await res.text();
             console.error("Login Error:",res.status,errorText);
@@ -1919,7 +1926,8 @@ async function handleModalRegister(e){
         return;
     }
     try{
-        const res=await fetch("http://localhost:5000/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({first_name,last_name,email,password})});
+        // 🚩 FIX: Removed localhost, using relative path
+        const res=await fetch("/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({first_name,last_name,email,password})});
         const data=await res.json();
         if(data.status==="success"){
             showToast("Registration successful! Please log in.");
@@ -2002,7 +2010,8 @@ function initServicePage(){
             issue:$("#serviceIssue").value
         };
         try{
-            const response=await fetch("http://localhost:5000/api/services",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(serviceData)});
+            // 🚩 FIX: Removed localhost, using relative path
+            const response=await fetch("/api/services",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(serviceData)});
             const result=await response.json();
             if(response.ok){
                 console.log("Service request submitted:",result);
@@ -2238,9 +2247,6 @@ async function initializeApp(){
             }
             if($('#category-panel-modal')&&$('#category-panel-modal').classList.contains('active')){
                 closeCategoryPanel();
-            }
-            if($('#qrModalOverlay')&&$('#qrModalOverlay').style.display!=='none'){
-                closeQrModal();
             }
             closeAllPopovers();
         }
