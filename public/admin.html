@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Tech Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="admin.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+    <header class="app-header">
+        <div class="brand">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
+            </svg>
+            Smart Tech Admin
+        </div>
+        <div class="user-menu">
+            <div id="currentDateTime"></div>
+        </div>
+        <button id="menuToggleBtn" class="icon-btn" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); display: none;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+    </header>
+
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-nav-wrapper">
+                <nav>
+                    <button class="nav-link active" data-target="dashboardPage">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 3v18h18"></path>
+                            <path d="M18.7 8.3L12 15l-3.3-3.3c-.94-.94-2.46-.94-3.4 0-.94.94-.94 2.46 0 3.4l5 5c.94.94 2.46.94 3.4 0l6-6c.94-.94.94-2.46 0-3.4-.94-.94-2.46-.94-3.4 0z"></path>
+                        </svg>
+                        Dashboard
+                    </button>
+                    <button class="nav-link" data-target="productsPage">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                            <path d="M16 10a4 4 0 0 1-8 0"></path>
+                        </svg>
+                        Products
+                    </button>
+                    <button class="nav-link" data-target="ordersPage">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                        </svg>
+                        Orders
+                    </button>
+                    <button class="nav-link" data-target="customersPage">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                        Customers
+                    </button>
+                    <button class="nav-link" data-target="servicesPage">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 12s3 0 5 5 7-5 7-5l3 3s2 2 4 0-4-4-4-4-2-2-4 0-5 5-5 5H2z"></path>
+                            <circle cx="12" cy="12" r="2"></circle>
+                        </svg>
+                        Services
+                    </button>
+                    
+                    <button class="nav-link" data-target="reportsPage">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                             <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
+                        </svg>
+                        Reports
+                    </button>
+                    
+                    <button class="nav-link" data-target="advertisementsPage">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                        Advertisements
+                    </button>
+                </div>
+                <div class="sidebar-bottom-actions">
+                    <button id="logoutBtn" class="nav-link danger-link">Logout</button>
+                </div>
+            </nav>
+        </aside>
+
+        <main class="content">
+            <div id="dashboardPage" class="page visible">
+                <div class="page-head">
+                    <h1 class="page-title">Dashboard</h1> </div>
+                <div class="cards">
+                     <div class="card stat">
+                        <div class="stat-header">
+                            <h4 class="stat-label">Today's Sale</h4> <div class="stat-card-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="statMonthlySale">0</div>
+                    </div>
+                    <div class="card stat">
+                        <div class="stat-header">
+                            <h4 class="stat-label">Total Orders</h4>
+                            <div class="stat-card-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="statOrders">0</div>
+                    </div>
+                    <div class="card stat">
+                        <div class="stat-header">
+                            <h4 class="stat-label">Total Customers</h4>
+                            <div class="stat-card-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="statCustomers">0</div>
+                    </div>
+                    <div class="card stat">
+                        <div class="stat-header">
+                            <h4 class="stat-label">Total Products</h4>
+                            <div class="stat-card-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="statProducts">0</div>
+                    </div>
+                    <div class="card stat">
+                        <div class="stat-header">
+                            <h4 class="stat-label">Today's Orders</h4> <div class="stat-card-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="statMonthlyOrders">0</div>
+                    </div>
+                    <div class="card stat">
+                        <div class="stat-header">
+                            <h4 class="stat-label">Low Stock Products</h4>
+                            <div class="stat-card-icon danger">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="statLowStock">0</div>
+                    </div>
+                    <div class="card stat">
+                        <div class="stat-header">
+                            <h4 class="stat-label">Total Services</h4>
+                            <div class="stat-card-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3 0 5 5 7-5 7-5l3 3s2 2 4 0-4-4-4-4-2-2-4 0-5 5-5 5H2z"></path><circle cx="12" cy="12" r="2"></circle></svg>
+                            </div>
+                        </div>
+                        <div class="stat-value" id="statServices">0</div>
+                    </div>
+                </div>
+
+                <div class="group">
+                    <div class="group-head">
+                        <h3>Daily Order Trend</h3>
+                        <div class="chart-controls" style="display: flex; gap: 15px; align-items: flex-end;">
+                            <div class="form-field small">
+                                <label for="dailyRevenueMonthSelect">Select Month:</label>
+                                <select id="dailyRevenueMonthSelect"></select>
+                            </div>
+                            <div class="form-field small">
+                                <label for="dailyRevenueYearSelect">Select Year:</label>
+                                <select id="dailyRevenueYearSelect"></select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="dailyOrderChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="charts-and-list-grid">
+                    <div class="group full-width"> 
+                        <div class="group-head">
+                            <h3>Top Selling Products</h3>
+                            <div class="chart-controls" style="display: flex; gap: 15px; align-items: flex-end;">
+                                <div class="form-field small">
+                                    <label for="topSellingMonthSelect">Select Month:</label>
+                                    <select id="topSellingMonthSelect"></select>
+                                </div>
+                                <div class="form-field small">
+                                    <label for="topSellingYearSelect">Select Year:</label>
+                                    <select id="topSellingYearSelect"></select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chart-container" id="topSellingProductsChartContainer">
+                            <canvas id="topSellingProductsChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="group full-width">
+                        <div class="group-head">
+                            <h3>Low Stock Products</h3>
+                        </div>
+                        <div class="low-stock-list-container">
+                             <div class="dashboard-list-header">
+                                <div class="list-item">
+                                    <span class="muted">Category</span> 
+                                    <span class="muted">Product Name</span> 
+                                    <span class="muted" style="text-align: center;">Stock</span>
+                                </div>
+                            </div>
+                            <ul id="lowStockList" class="dashboard-list">
+                                <p class="empty-state">Loading low stock data...</p>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="group">
+                    <div class="group-head">
+                        <h3>Recent Orders</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Customer</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentOrdersBody">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="productsPage" class="page">
+                <div class="page-head">
+                    <h1 class="page-title">Products</h1> <div class="search-and-actions-row"> 
+                         <div class="search-container">
+                            <input type="text" id="productsPageSearch" placeholder="Search product name or brand..." class="search-input">
+                            <button id="clearProductsPageSearch" class="btn subtle small clear-search-btn">Clear</button>
+                            </div>
+                        <button id="openAddProduct" class="btn primary small add-new-btn-right">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add New
+                        </button>
+                    </div>
+                </div>
+                <div class="product-filters">
+                    <button class="product-filter-btn active" data-category="All">All</button>
+                    <button class="product-filter-btn" data-category="mobiles">Mobiles</button>
+                    <button class="product-filter-btn" data-category="laptops">Laptops</button>
+                    <button class="product-filter-btn" data-category="tvs">Televisions</button>
+                    <button class="product-filter-btn" data-category="accessories">Accessories</button>
+                    <button class="product-filter-btn" data-category="smartwatch">Smart Watches</button>
+                    <button class="product-filter-btn" data-category="seconds">Seconds Mobile</button>
+                </div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Brand</th>
+                                <th>Category</th>
+                                <th>Variants</th>
+                                <th>Stock</th>
+                                <th>MRP Price</th>
+                                <th>Price</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="ordersPage" class="page">
+                <div class="page-head">
+                    <h1 class="page-title">Orders</h1> <div class="search-and-actions-row"> 
+                        <div class="search-container">
+                            <input type="text" id="ordersPageSearch" placeholder="Search order ID or customer name..." class="search-input">
+                            <button id="clearOrdersPageSearch" class="btn subtle small clear-search-btn">Clear</button>
+                            </div>
+                    </div>
+                </div>
+                
+                <div class="order-filters-and-date">
+                    <div class="order-filters">
+                        <button class="order-filter-btn active" data-status="All">All</button>
+                        <button class="order-filter-btn" data-status="Pending">Pending</button>
+                        <button class="order-filter-btn" data-status="Shipped">Shipped</button>
+                        <button class="order-filter-btn" data-status="Delivered">Delivered</button>
+                        <button class="order-filter-btn" data-status="Cancelled">Cancelled</button>
+                    </div>
+                    <div class="date-filter-container">
+                        <label for="orderDateFilter" class="date-filter-label">Filter by Date:</label>
+                        <input type="date" id="orderDateFilter" class="date-filter-input">
+                        <button id="applyOrderDateFilter" class="btn small primary">Apply</button>
+                        <button id="clearOrderDateFilter" class="btn small">Clear</button>
+                    </div>
+                    </div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Customer Name</th>
+                                <th>Total</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="customersPage" class="page">
+                <div class="page-head">
+                    <h1 class="page-title">Customers</h1> <div class="search-and-actions-row"> 
+                        <div class="search-container">
+                            <input type="text" id="customersPageSearch" placeholder="Search customer name or email..." class="search-input">
+                            <button id="clearCustomersPageSearch" class="btn subtle small clear-search-btn">Clear</button>
+                            </div>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Customer Name</th>
+                                <th>Email</th>
+                                <th>Joined Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customersBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="servicesPage" class="page">
+                <div class="page-head">
+                    <h1 class="page-title">Service Requests</h1> <div class="search-and-actions-row"> 
+                         <div class="search-container">
+                            <input type="text" id="servicesPageSearch" placeholder="Search customer, phone, or device..." class="search-input">
+                            <button id="clearServicesPageSearch" class="btn subtle small clear-search-btn">Clear</button>
+                            </div>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Customer Name</th>
+                                <th>Ph. No.</th>
+                                <th>Email</th>
+                                <th>Device</th>
+                                <th>Issue</th>
+                                <th>Booking Date & Time</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servicesBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="reportsPage" class="page">
+                <div class="page-head">
+                    <h1 class="page-title">Reports</h1> </div>
+                <div class="reports-grid">
+                    <div class="report-card">
+                        <div class="report-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                        </div>
+                        <h3 class="report-title">Users Report</h3>
+                        <button class="btn primary small" data-report-type="customers">Download PDF</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                                <line x1="3" y1="6" x2="21" y2="6"></line>
+                                <path d="M16 10a4 4 0 0 1-8 0"></path>
+                            </svg>
+                        </div>
+                        <h3 class="report-title">Products Report</h3>
+                        <button class="btn primary small" data-report-type="products">Download PDF</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                            </svg>
+                        </div>
+                        <h3 class="report-title">Orders Report</h3>
+                        <button class="btn primary small" data-report-type="orders">Download PDF</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20.2 14.5c-.8 2.4-2.1 4.6-3.8 6.4a10.5 10.5 0 0 1-13.8 0c-1.7-1.8-3-4-3.8-6.4"></path>
+                                <path d="M3.8 9.5c.8-2.4 2.1-4.6 3.8-6.4a10.5 10.5 0 0 1 13.8 0c1.7 1.8 3 4 3.8 6.4"></path>
+                                <circle cx="12" cy="12" r="5"></circle>
+                            </svg>
+                        </div>
+                        <h3 class="report-title">Reviews Report</h3>
+                        <button class="btn primary small" data-report-type="reviews">Download PDF</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                        </div>
+                        <h3 class="report-title">Sales Report</h3>
+                        <button class="btn primary small" data-report-type="sales">Download PDF</button>
+                    </div>
+                    <div class="report-card">
+                        <div class="report-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3 0 5 5 7-5 7-5l3 3s2 2 4 0-4-4-4-4-2-2-4 0-5 5-5 5H2z"></path>
+                                <circle cx="12" cy="12" r="2"></circle>
+                            </svg>
+                        </div>
+                        <h3 class="report-title">Services Report</h3>
+                        <button class="btn primary small" data-report-type="services">Download PDF</button>
+                    </div>
+                </div>
+            </div>
+            <div id="advertisementsPage" class="page">
+                <div class="page-head">
+                    <h1 class="page-title">Advertisement Management</h1> 
+                    <button class="btn primary small" id="openAdvertisementModalBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Manage Advertisements
+                    </button>
+                </div>
+                
+                <div class="group">
+                    <div class="group-head">
+                        <h3>Current Homepage Carousel Images</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 150px;">Image</th>
+                                    <th>URL</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="currentAdvertisementsTableBody">
+                                <tr><td colspan="3" class="empty">Click "Manage Advertisements" to upload or view images.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            </main>
+    </div>
+
+    <div id="productModal" class="modal hidden">
+        <div class="modal-card">
+            <div class="modal-head">
+                <h3 id="productModalTitle">Add New Product</h3>
+                <button id="closeProductModal" class="icon-btn">✕</button>
+            </div>
+            <form id="productForm" class="form">
+                <div class="form-group">
+                    <h3>Product Details</h3>
+                    <div class="grid three-col"> 
+                        <div class="form-field">
+                            <label for="pName">Name</label>
+                            <input type="text" id="pName" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="pBrand">Brand</label>
+                            <input type="text" id="pBrand" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="pCategory">Category</label>
+                            <select id="pCategory" required>
+                                
+                                <option value="mobiles">Mobile</option>
+                                <option value="laptops">Laptop</option>
+                                <option value="tvs">Television</option>
+                                <option value="accessories">Accessory</option>
+                                <option value="smartwatch">Smart Watch</option>
+                                <option value="seconds">Seconds Mobile</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="span-2" id="variantFields">
+                    <h3>Variants</h3>
+                    <div class="variants-and-price-container">
+                        <div id="variantsContainer" class="variants-container">
+                        </div>
+                        <button type="button" class="btn primary add-variant-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add New Variant
+                        </button>
+                    </div>
+                </div>
+                <div class="form-field-group span-2" id="singlePriceField">
+                    <h3>Pricing & Stock</h3>
+                    <div class="grid">
+                        <div class="form-field">
+                            <label for="pMRPPrice">MRP Price (Original)</label>
+                            <input type="number" id="pMRPPrice" min="0" step="1" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="pStock">Stock</label>
+                            <input type="number" id="pStock" min="0" step="1" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="pDiscountEndDate">Discount End Date</label>
+                            <input type="datetime-local" id="pDiscountEndDate">
+                        </div>
+                        <div class="form-field">
+                            <label for="pPrice">Price (Discounted)</label>
+                            <input type="number" id="pPrice" min="0" step="1">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="span-2 form-group">
+                    <h3>Product Description</h3>
+                    <div class="grid">
+                        <div class="form-field">
+                            <label for="pFeatures">Features</label>
+                            <textarea id="pFeatures" rows="3"></textarea>
+                        </div>
+                        <div class="form-field">
+                            <label for="pDesc">Description</label>
+                            <textarea id="pDesc" rows="4" required></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-field span-2 form-group">
+                    <h3>Product Images</h3>
+                    <div class="image-upload-area">
+                        <div class="image-inputs">
+                            <div class="form-field">
+                                <label for="pImage1">Photo 1</label>
+                                <input type="file" id="pImage1" accept="image/*">
+                            </div>
+                            <div class="form-field">
+                                <label for="pImage2">Photo 2</label>
+                                <input type="file" id="pImage2" accept="image/*">
+                            </div>
+                            <div class="form-field">
+                                <label for="pImage3">Photo 3</label>
+                                <input type="file" id="pImage3" accept="image/*">
+                            </div>
+                        </div>
+                        <div class="image-preview" id="imagePreview"></div>
+                    </div>
+                </div>
+                
+                <div class="form-actions span-2">
+                    <button type="reset" class="btn subtle" id="resetProductForm">Reset</button>
+                    <button type="submit" class="btn primary">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="orderViewModal" class="modal hidden">
+        <div class="modal-card">
+            <div class="modal-head">
+                <h3 id="orderViewModalTitle">Order Details</h3>
+                <button id="closeOrderViewModal" class="icon-btn">✕</button>
+            </div>
+            <div id="orderViewContent" class="order-view-content-wrapper">
+                </div>
+        </div>
+    </div>
+    
+    <div id="serviceViewModal" class="modal hidden">
+        <div class="modal-card service-details-card">
+            <div class="modal-head">
+                <h3 id="serviceViewModalTitle">Service Request Details</h3>
+                <button id="closeServiceViewModal" class="icon-btn">✕</button>
+            </div>
+            <div id="serviceViewContent" class="service-view-content">
+                </div>
+        </div>
+    </div>
+
+    <div id="sendMessageModal" class="modal hidden">
+        <div class="modal-card send-message-card">
+            <div class="modal-head">
+                <h3>Send Message to Customer</h3>
+                <div class="modal-head-actions">
+                    <button id="backFromSendMessageModal" class="icon-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 12H5"></path>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                    </button>
+                    </div>
+            </div>
+            <div class="modal-body">
+                <div class="customer-info">
+                    <p>Name: <strong id="msgCustomerName"></strong></p>
+                    <p>Email: <strong id="msgCustomerEmail"></strong></p> </div>
+                <div class="form-field span-2">
+                    <label for="messageTextarea">Message</label>
+                    <textarea id="messageTextarea" placeholder="Type your message here..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button id="sendEmailBtn" class="btn primary">Send Mail</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="advertisementModal" class="modal hidden">
+        <div class="modal-card large">
+            <div class="modal-head">
+                <h3 id="advertisementModalTitle">Manage Homepage Carousel Advertisements</h3>
+                <button id="closeAdvertisementModal" class="icon-btn">✕</button>
+            </div>
+            <div class="modal-body-content">
+                <div class="group half-width">
+                    <div class="group-head">
+                        <h4>Upload New Image</h4>
+                    </div>
+                    <form id="advertisementForm" class="form">
+                        <div class="form-field">
+                            <label for="adDescription">Description / Title (Optional)</label>
+                            <input type="text" id="adDescription" placeholder="e.g., Summer Sale Banner" maxlength="255">
+                        </div>
+                        <div class="form-field">
+                            <label for="adImage">Choose Image (PNG, JPG)</label>
+                            <input type="file" id="adImage" accept="image/*" required>
+                            <p class="muted-text">Recommended aspect ratio: 4:1 (e.g., 1200x300px)</p>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn primary">Upload Advertisement</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="group half-width">
+                    <div class="group-head">
+                        <h4>Current Advertisements (<span id="adCount">0</span>)</h4>
+                    </div>
+                    <ul id="advertisementsList" class="dashboard-list">
+                        <p class="empty-state">No advertisements uploaded.</p>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="admin.js"></script>
+</body>
+</html>

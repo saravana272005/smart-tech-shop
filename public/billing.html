@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checkout - Smart Tech Shop</title>
+  <link href="styles.css" rel="stylesheet"/>
+  <link href="styles1.css" rel="stylesheet"/>
+</head>
+<body>
+  <header class="main-header" id="pageHeader">
+    <div class="logo">📱 Smart Tech Shop</div>
+    <div id="search-container-wrapper"></div>
+    <nav>
+      <a href="index.html" class="nav-link">Home</a>
+      <a href="shop.html" class="nav-link">Shop</a>
+      <a href="service.html" class="nav-link">Service</a>
+      <a href="contact.html" class="nav-link">Contactus</a>
+      <a href="about.html" class="nav-link">Aboutus</a>
+      <div id="loginBtnContainer">
+</div>
+      <a href="cart.html" class="cart-icon-link">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" 
+             viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="9" cy="21" r="1"></circle>
+          <circle cx="20" cy="21" r="1"></circle>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+        </svg>
+        <span id="cartCountBadge" style="display:none;">0</span>
+      </a>
+    </nav>
+  </header>
+
+  <main style="padding-top: 50px;">
+    <div class="checkout-stepper-container">
+      <div class="stepper-item completed">
+        <div class="stepper-circle">✅</div>
+        <div class="stepper-label">My Cart</div>
+      </div>
+      <div class="stepper-item active">
+        <div class="stepper-circle">2</div>
+        <div class="stepper-label">Billing</div>
+      </div>
+      <div class="stepper-item">
+        <div class="stepper-circle">3</div>
+        <div class="stepper-label">Order Summary</div>
+      </div>
+    </div>
+
+    <section id="billingSection" class="billing-section flipkart-style">
+        </section>
+
+    <div id="qrModalOverlay" class="modal-overlay">
+        <div class="qr-modal-content">
+            <button class="qr-modal-close-btn" onclick="closeQrModal()">&times;</button>
+            <h3 style="margin-bottom: 10px;">Scan to Pay</h3>
+            <div id="qrCodeImageContainer">
+                <img src="https://via.placeholder.com/200?text=QR+Code" alt="QR Code">
+            </div>
+            <p>Use any UPI app to scan and pay.</p>
+            <p class="total-amount" id="qrModalAmount">₹0.00</p>
+        </div>
+    </div>
+
+  </main>
+
+  <footer class="footer">    
+    <div class="footer-bottom">© 2025 Smart Tech Shop. All Rights Reserved.</div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
